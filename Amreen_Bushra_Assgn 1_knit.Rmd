@@ -1,0 +1,98 @@
+---
+title: "Assignment 1 : Logistic Regression - Bushra Amreen"
+output: 
+  html_document: 
+    toc: yes
+    number_sections: yes
+    fig_caption: yes
+---
+
+```{r, include = FALSE, warning=FALSE}
+#Loading data and libraries:
+library(haven)
+library(dplyr)
+library(table1)
+library(ggplot2)
+library(broom)
+chs <- haven::read_sas("https://www1.nyc.gov/assets/doh/downloads/sas/episrv/chs2019_public.sas7bdat")
+```
+
+### **Data Cleaning and Organizing:**
+
+```{r, warning=FALSE}
+##Removing NAs and creating data set with only variables necessary for Assignment 1
+chsnewdat <- chs %>% 
+  select(currentasthma19,wallmold,employment19,newrace, agegroup, birthsex, education, insuredgateway19) %>%            
+tidyr::drop_na()   
+
+chsmydat <- chsnewdat %>% mutate(Asthma = recode_factor(currentasthma19, "1" = "Yes","2" = "No"),
+Mold = recode_factor(wallmold,"1" = "Wall Mold Present", 
+"2" = "Wall Mold Absent"),Race = recode_factor(newrace,"1"= "White Non-Hispanic","2" ="Black Non-Hispanic","3"= "Hispanic","4"= "Asian/PI Non-Hispanic","5"=" Other Non-Hispanic"),Age = recode_factor(agegroup,"1"= "18-24yrs","2"="25-44 yrs",
+"3"="45-64 yrs","4"= "65+ yrs"),Sex =recode_factor(birthsex,"1" = "Male","2" = "Female" ),Insurance_Coverage= recode_factor(insuredgateway19,"1" = "Yes","2" = "No"))
+
+#Re-leveling variables to create desired reference levels 
+
+chsmydat$Asthma<- relevel(chsmydat$Asthma, ref = "No")
+chsmydat$Mold <- relevel(chsmydat$Mold, ref = "Wall Mold Absent")
+chsmydat$Insurance_Coverage<-relevel(chsmydat$Insurance_Coverage, ref = "No")
+
+```
+
+### **Epi Table 1**
+
+```{r,warning=FALSE}
+table1::table1(~Asthma+Race+Age+Sex+Insurance_Coverage|Mold,data =chsmydat, 
+               overall = "Total", 
+               rowlabelhead ="",
+               caption = "Table 1:  Characteristics of participants of Community Health Survey 2019 ")
+```
+
+**Table 1 summary:** 
+Table 1 shows that the total number of participants present in the dataset used for this study was 8503. Out of these participants 43% (3732) were male while 56.1% (4771) were female. Also, 90.6% (7706) of the total participants reported having some form of insurance coverage while 797 (9.4%) reported having no insurance coverage. Out of the total participants, 1140 reported having visible mold on the walls or ceilings of their homes in the last 12 months while 7363 reported not having any mold int their home in the last 12 months. 8.6% (98) of the participants who reported presence of mold also reported having an episode of asthma or asthma attack in the last 12 months while 91.4% (1042)reported no asthma symptoms. Of those who reported absence of mold, 95.9% (7064) reported no asthma symptoms while 4.1%(299) reported having asthma symptoms.All numbers reported in this table are after removal of missing data points(NAs).
+
+
+### **Descriptive Plot**
+
+```{r,warning=FALSE,fig.cap ="Figure 1: Asthma in participants of different age groups, stratified by presence and absence of Wall Mold"}
+
+plotdata <- chsmydat %>% 
+  group_by(Mold,Asthma,Age) %>% 
+  summarise(count = n()) %>% 
+  mutate(perc = (count/sum(count)*100))
+
+ggplot(plotdata, aes(x = Age, y = perc, fill = Asthma)) +
+  geom_bar(stat="identity", width = 0.7, color="black") +  facet_grid(.~Mold)+ 
+  labs(y = "Percentage of participants (%)", x = "Age Groups", fill = "Asthma") +
+  theme_minimal(base_size = 10) + geom_text(aes(label = round(perc)), position = position_stack(vjust = 0.2),size = 2)
+
+```
+
+**Plot Interpretation:**  This stacked plot shows the distribution of asthma in the CHS 2019 data set when stratified by presence and absence of mold in different age groups.
+Interestingly, we observe that almost 53% of the participants who have wall mold and also has asthma falls in the age group 45 to 64, whereas participants of age 45-65 make up only 36% of the group who have asthma but no wall mold. From the plot we can interpret that maybe those in the ages of 45-64 are at higher risk of asthma when mold is present. 
+
+
+### **Logistic Regression**
+```{r,warning=FALSE}
+
+fit1<-glm(Asthma~Mold+Race+Age+Sex+Insurance_Coverage, data =chsmydat, family = "binomial")
+summary(fit1)
+```
+##Odds Ratio Calculations:
+```{r}
+tidy(fit1,exponentiate=TRUE,  conf.int=TRUE)
+```
+
+**Interpretation of Regression analysis:**
+
+***What hypothesis did you test?***
+
+Hypothesis being tested in study is that presence of mold in one's house increases the odds of having asthma attacks or asthma episodes. This hypothesis is tested by using Mold(wallmold) as exposure variable and Asthma(currentasthma19) as the outcome variable  from the CHS 2019 dataset.The variables controlled for included Race(newrace), Age(agegroup), Sex(birthsex), Insurace Coverage(insuredgateway19) from the same dataser 
+
+***What is your conclusion?***  
+
+It can be concluded that odds of having asthma attacks in those who report having mold is 2.05 [Beta=0.718 (p-value 5.9e-0.9), Odds Ratio = 2.05(CI 1.6,2.6)] times greater than the odds of having asthma attacks in those who do not report having mold in their household when controlling for age, sex, insurance coverage and race. Given the p-value 5.9e-0.9 is less than 0.05 and 1 does not fall within the confidence interval (1.6,2.6), we can conclude that the results are statistically significant.
+
+
+
+**Citations:**
+New York City Department of Health and Mental Hygiene. Community Health Survey [2019)]; public use dataset accessed on [09Sep2021].
