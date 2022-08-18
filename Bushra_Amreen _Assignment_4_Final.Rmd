@@ -1,0 +1,212 @@
+---
+title: "Bios2: Assignment 4"
+author: "Bushra Amreen"
+date: "12/18/2021"
+output: 
+  html_document: 
+    toc: yes
+    number_sections: yes
+---
+
+# **Background:**
+
+The following analysis was carried using a data-set associated with 
+"Moen EL, Fricano-Kugler CJ, Luikart BW, O’Malley AJ (2016) Analyzing Clustered Data: Why and How to Account for Multiple Observations Nested within a Study Participant? PLoS ONE 11(1): e0146721. https://doi.org/10.1371/journal.pone.0146721." 
+
+Our goal is to reproduce results of research question 2 from the above paper
+
+The question **hypothesizes** that pten knockdown effects soma size of neurons.
+
+
+```{r}
+rawdat<- read.csv("PtenAnalysisData.csv")
+
+library(dplyr)
+```
+
+# **Methods**
+
+We used the statistical software, R to conduct this analysis.
+
+For our outcome, we use continuous variable “Soma Size”.For the exposure we use binary variable Pten, representing "control" or "Pten shRNA". Other categorical variables considered for analysis is Pten bar (prop) which reperesnts the proportions of pten knockdown cells per mouse.
+
+We first carry out linear regression, marginal regression, mixed effects models and fixed effects models to reproduce Table.4 in the paper. We limited our data set to mice who had no fatty acid treatment to reproduce the resuts from the paper for Research Quetion 2.
+
+Data was cleaned and organized for desired variables before starting analysis.
+
+```{r}
+cleandat<- rawdat %>% mutate(fattyacid=recode(fa,"0"="no treatment", "1"="vehicle control","2"="fatty acid treatment"))
+cleandat_sub <- cleandat %>% filter(fa==0) #filtering to only mice with no treatment
+```
+
+The following notched boxplot summarizes soma size of each mouse with no Fatty Acid treatment. 
+
+## Figure 1: Box Plot
+
+```{r}
+library(ggplot2)
+ggplot(cleandat_sub, aes(x= factor(mouseid), y=somasize, group=mouseid)) + 
+  geom_boxplot(outlier.shape = NA,varwidth=TRUE,notch = TRUE) +
+  geom_jitter(width=0.2, alpha = 0.25) +
+  labs(title = "Box plot of soma size per mouse") +
+  xlab("mouse ID") + ylab("Soma Size") +
+  theme_grey(base_size = 16)
+```
+
+**Figure 1** Notched box plot of soma size per each mouse, including individual data points with jitter. Variable widths show the difference in obsevation numbers per mouse.
+
+## Calculating ICC for SOMA size the entire data set.
+```{r}
+library(nlme)
+fit <- lme(somasize ~ pten, data = cleandat, random = ~1|mouseid)
+ICClme <- function(fit){
+  cors <- as.numeric(VarCorr(fit))
+  cors[1] / (cors[1] + cors[2])
+}
+ICClme(fit)
+```
+
+**ICC interpretation:** The ICC we calculated is 0.21 showing that the 21% of the variance out of total variance is due to random effect i.e.within subject variations . This number matches with the paper's showing we reproduced ICC from the paper correctly.
+
+# **Models**
+
+## Model 1: Linear Regeression
+
+$$\begin{equation*}
+\begin{aligned}
+somasize_{ij} = \beta_0 + \beta_1 Pten_{ij} + \epsilon_{ij}
+\\\ where:\epsilon_i \stackrel{iid}{\sim} N(0,\sigma_\epsilon^2)\
+\end{aligned}
+\end{equation*}$$
+
+```{r}
+fit1 <- lm(somasize~factor(pten),data=cleandat_sub)
+summary(fit1)
+confint(fit1, level=0.95)
+```
+
+**Model 1 interpretation:** with 1 unit increase in Pten knockdon compared to no knockdown, soma size increases by 11.04 (7.15,14.92). This is consistent with th epaper's results.
+
+## Model 2: Marginal Regression
+
+$$\begin{equation*}
+\begin{aligned}
+E[somasize_{ij}|Pten_{ij}] = \beta_0 + \beta_1 Pten_{ij} \\where: \epsilon_{ij}=0 \\and\ \sigma_\_^2=0\
+\end{aligned}
+\end{equation*}$$
+
+```{r, warning=FALSE}
+
+library(gee)
+gagee1 <- gee(somasize~factor(pten), data=cleandat_sub, id = mouseid,corstr="exchangeable")
+gagee1$coefficients
+#conf.high
+11.51057+(2.196469*1.96)
+#conf low
+11.51057-(2.196469*1.96)
+```
+
+**Model 2 interpretation:**  with 1 unit increase in Pten knockdown compared to no knockdown, soma size increases by 11.51 (7.2,15.81). This is consistent with the paper's results.
+
+*note* Exchangeable correlation structure was needed to reproduce this result.
+
+## Model 3: Fixed Effets Regression
+
+$$\begin{equation*}
+\begin{aligned}
+somasize_{ij} = \beta_0 + \beta_1 mouse{i1}+...+\beta_K mouse{iK}+ \beta_{K+1} Pten_{ij} +\theta + \epsilon_{ij} \\ where:\epsilon_i \stackrel{iid}{\sim} N(0,\sigma_\epsilon^2)\
+\end{aligned}
+\end{equation*}$$
+
+```{r}
+#fixed effect model
+fit3 <- lm(somasize ~ pten + factor(mouseid) , data=cleandat_sub)
+summary(fit3) #11.540 
+#Confidence interval
+confint(fit3, level=0.95)
+```
+
+**Model 3 interpretation:**  with 1 unit increase in Pten knockdown compared to no knockdown, soma size increases by 11.54 (7.88,15.2) when individual effects are taken into account. This is consistent with the paper's results.
+
+## Model 4: Mixed Effets Regression (Random intercept-only model)
+
+$$\begin{equation*}
+\begin{aligned}
+somasize_{ij} = \beta_0 + \beta_1 Pten_{ij} +\theta + \epsilon_{ij}
+\\\ where:\epsilon_i \stackrel{iid}{\sim} N(0,\sigma_\epsilon^2)\ , \  \theta_i \stackrel{iid}{\sim} N(0,\tau^2)
+\end{aligned}
+\end{equation*}$$
+
+```{r}
+#mixed effects model
+library(nlme)
+fit4 <- lme(somasize ~ factor(pten), data = cleandat_sub, random = ~1|mouseid)
+#summary(fit4) #11.509
+intervals(fit4)
+
+```
+
+**Model 4 interpretation:**  with 1 unit increase in Pten knockdown compared to no knockdown, soma size increases by 11.509 (7.86,15.16) when random effects are taken into account. This is consistent with the paper's results.
+
+### Model Diagnosis (mixed effects model)
+
+```{r}
+#model diagnosis
+par(mfrow=c(1,2))
+qqnorm(residuals(fit4, type = "pearson"), main = "Pearson residuals QQ plot")
+qqline(residuals(fit4, type = "pearson"))
+qqnorm(ranef(fit4)[, 1], main = "Random Intercepts QQ plot")
+qqline(ranef(fit4)[, 1])
+```
+
+**Model diagnosis interpretation:** QQplots of random effects and residuals , both show normality proving our model assumptions to be true.
+
+
+## Model 5: Mixed Effets Regression  with knockdown cell proportion as additional predictor
+
+$$\begin{equation*}
+\begin{aligned}
+somasize_{ij} = \beta_0 + \beta_1 Pten_{ij} + \beta_2 \bar{Pten}_{ij}+ \theta + \epsilon_{ij} 
+\\\ where:\epsilon_i \stackrel{iid}{\sim} N(0,\sigma_\epsilon^2)\ , \  \theta_i \stackrel{iid}{\sim} N(0,\tau^2)
+\end{aligned}
+\end{equation*}$$
+```{r}
+#mixed effects model+ proportion of neurons with Pten knockdown per mouse  #11.54
+fit5 <- lme(somasize ~ factor(pten) + prop, data = cleandat_sub, random = ~1|mouseid)
+#summary(fit5) #11.54006
+intervals(fit5)
+```
+
+**Model 5 interpretation:**  When adusting for proportion of pten knockdon per cell, with 1 unit increase in Pten knockdown compared to no knockdown, soma size increases by 11.54(7.88,15.28) when random effects are taken into account.. This is consistent with the paper's results.
+
+# **Model Summary and Table 4 Reproduction**
+```{r}
+library(tidyverse)
+library(broom)
+T1<-tidy(fit1,exponentiate=TRUE, conf.int=TRUE)
+T3<-tidy(fit3,exponentiate=TRUE, conf.int=TRUE)
+
+row1 <- T1[-1,] #linear
+row2.1 <-T3[-3:-6,]
+row2<-row2.1[-1,] #fixed
+table <- rbind(row1,row2)
+table["Models"] <- c("Neuron Level linear regression","Fixed Effects Regression")
+table<-table[,-1]
+table<-table[,-3]
+library(tidyverse)
+table<-table %>% add_row(estimate = 11.51, std.error=2.196,p.value= 0.001,conf.low=7.21,conf.high=15.82, Models="Marginal Regression")
+table<-table %>% add_row(estimate = 11.51, std.error=1.86,p.value= 0.001,conf.low=7.86,conf.high=15.16, Models="Mixed effects regression")
+table<-table %>% add_row(estimate = 11.54, std.error=1.86,p.value= 0.001,conf.low=7.88,conf.high=15.20, Models="Mixed effects regression with Pten Hat as predictor")
+table <- table[, c("Models","estimate", "std.error", "p.value","conf.low","conf.high")]
+
+knitr::kable(table,"simple")
+```
+
+
+# **Conclusion**
+As all results were statistically significant,we can conclude that Pten knockdown effects soma size. 
+
+
+# **Discussion and Limitations**
+
+Differences in standard errors in the reproduction of results may be due to difference in software (R vs STATA) used for the analysis. Rest of the results could be easy reproduced once data subset specifications used by the paper was figured out. Creating the table was the hardest part for me.
