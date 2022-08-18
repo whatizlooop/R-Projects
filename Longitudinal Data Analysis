@@ -162,7 +162,7 @@ qqline(ranef(fit4)[, 1])
 **Model diagnosis interpretation:** QQplots of random effects and residuals , both show normality proving our model assumptions to be true.
 
 
-## Model 5: Mixed Effets Regression  with knockdown cell proportion as additional predictor
+## Model 5: Mixed Effects Regression  with knockdown cell proportion as additional predictor
 
 $$\begin{equation*}
 \begin{aligned}
