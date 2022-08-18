@@ -1,0 +1,245 @@
+---
+title: "Assignment2: Loglinear Models"
+author: "Bushra Amreen"
+date: "10/20/2021"
+output: 
+  html_document: 
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+---
+# **Background:**
+The following analysis was carried using the following data set : 
+Smith, Nicole; Martin, Rachel; Bauer, Brian; Bandel, Shelby; Capron, Daniel (2020), “Data for: The Association Between Nocturnal Panic Attacks and Suicidal Ideation, Plans, and Attempts”, Mendeley Data, V1, doi:10.17632/9p4vv275hk.1.
+
+Suicide is a global public health problem and identification of  risk factors that precede suicide attempts may play a role in mitigating them. There is evidence that indicates that suicide attempts are preceded by disrupted regulatory systems (such as sleep) and increased agitation. A cumulative indicator for this maybe Nocturnal Panic Attacks. In the article “The association between nocturnal panic attacks and suicidal ideation,  plans, and attempts ”, Nicole S.Smith and her colleagues try to elucidate the association between Nocturnal Panic attacks and Suicide ideation, planning and attempts. In Assignment 2, we try to reproduce a portion of their analysis with some edits.
+
+We **hypothesize** that presence of nocturnal panic attacks will be associated with higher suicide ideations. Using data set from the fore-mentioned article, we compare number of episodes of suicide ideation in presence and absence of Nocturnal Panic Attacks. To model this association we adjust for Age, gender and Education.
+
+```{r include = FALSE, warning=FALSE}
+library(haven)
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(table1)
+library(MASS)
+library(broom)
+library(gtsummary)
+download.file("https://md-datasets-cache-zipfiles-prod.s3.eu-west-1.amazonaws.com/9p4vv275hk-1.zip", destfile = "9p4vv275hk-1.zip")
+unzip("9p4vv275hk-1.zip")
+library(haven)
+rawdat <- haven::read_sav("NPs_DeidentifiedData.sav")
+```
+
+# **Methods**
+
+We used the statistical software, R to conduct this analysis.
+In order to carry out this analyses, we use discrete variable “Episodes of suicide ideation int he past year (SITBI5)” as our outcome variable, categorical variable Nocturnal Panic Attacks(NPS1)” as our study variable and categorical variables Age, gender  and education levels as our covariates.
+
+Data was cleaned and organized for desired variables before starting analysis.
+
+## Data Cleaning and Organizing:
+```{r}
+
+cleandat <- rawdat %>% mutate(
+  agegroup = factor(case_when(Age >= 19 & Age <= 29 ~ "19-29",Age >= 30 & Age <= 39 ~ "30-39",Age >= 40 & Age <= 49 ~ "40-49",Age >= 50 ~ "50+" ))) %>%
+  mutate(education1 = recode_factor(EducationCollapsed,"1" = "High school graduate","2" = "Some college", "3" = "College graduate or above")
+  ) %>% mutate(gender = recode_factor(Sex,"0" = "Male","1" ="Female")) %>%mutate(NPS1 = recode_factor(NPS1,"0" = "No nocturnal panic attacks","1" = "Nocturnal panic attacks"))
+cleandat <- within(cleandat, {label(gender) <- "Biological sex"
+  label(agegroup) <- "Age group (years)"
+  label(education1)   <- "Education"
+  label(SITBI5) <- "Episodes of suicide ideation in past year"
+  label(SITBI18) <- "Episodes of suicide planning in past year"
+  label(SITBI41) <- "Episodes of attempted suicide in past year"})
+
+#Subsetting dataset to only required variables and removing NAs for analysis
+newdat <- cleandat %>% dplyr::select("gender", "agegroup", "education1", "SITBI5", "NPS1")
+newdat_noNA<- newdat %>% na.omit
+```
+
+The following table summarizes the characteristics of the dataset:
+## Epi Table 1
+```{r}
+table1::table1(~gender + agegroup + education1 + SITBI5|NPS1,data =cleandat, 
+               overall = "Total", 
+               rowlabelhead ="",
+               caption = "Table 1: Charecterisitics of the Nocturnal Panic Attack and Sucide dataset")
+```
+
+**Table 1** shows all the variables used in this study stratified by presence and absence of Nocturnal Panic Attacks. It shows that the total number of participants present in the dataset was 327 out of which 161 has nocturnal panic attacks and 161 do not have nocturnal panic attacs . In these participants, mean number of episodes of suicide in the Nocturnal panic attack category was 8.39(SD 34.9) while mean episodes of suicide in the no panic attack catagory was 3.01(SD 10.2). The percentage of missing data per category are included in this table. 
+
+
+Plots were created to explore the data further.
+
+## Figure 1: Plot 1
+```{r,warning=FALSE,fig.cap ="Figure 1: Average number episodes of suicide ideations per agegroup in the past year stratified by presence and absence of Nocturnal panic attacks"}
+
+#plot of average count stratified by presence/absence of nocturnal panic attacks
+plot <- newdat_noNA %>% 
+  group_by(agegroup,NPS1) %>% 
+  summarize(mean = mean(SITBI5))%>%
+ungroup()
+
+plot %>% 
+  ggplot(aes(y = mean, x = agegroup)) +
+    geom_bar(stat='identity', aes(fill = agegroup)) + 
+    facet_grid(cols = vars(NPS1)) + 
+    guides(fill = guide_legend(title = "Age category", title.position = "top")) + 
+    labs(title = " Average number of sucide ideation per age catagory staritifed by Nocturnal Panic Attacks",
+        subtitle = "",
+        caption = "") + 
+    xlab("Age Category") + 
+    ylab("Average number of sucide ideations") +
+    theme(axis.text.x = element_text(angle = 90), 
+    panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+```
+
+**Figure 1:** 
+This plot shows the average number of episodes of suicide ideations per age group (19-29,30-39,40-49, 50+) in the past year, stratified by presence and absence of "Nocturnal panic attacks" from the Nocturnal panic attack dataset. 
+It can be observed that suicide ideations were on average more in the nocturnal panic attack strata with 19-29 year old group showing the highest average count (~13) for suicide ideations in the past year. The 40-49 group with panic attacks shows the second highest average count of suicide ideation (~10).It can be hypothesized that participants with nocturnal panic attacks are associated with higher suicide ideations compared to participants with no nocturnal panic attacks. 
+
+## Figure 2: Plot 2
+```{r warning = FALSE}
+newdat_noNA %>% ggplot(mapping = aes(x=SITBI5))+ geom_bar(position = "dodge", width =8, stat="count")+facet_grid(.~NPS1, labeller=label_both)+labs(title="Histogram for Epidsodes of Suicide Ideation statified by Nocturnal Panic Attacks")
+```
+
+**Figure 2:** 
+This histogram shows the distribution of counts of episodes of suicide ideations in the data set stratified by Nocturnam Panic attacks. It can be observed that there is a large number of zeros in the dataset.
+
+## Figure 3: Test for Multicollinearity:
+```{r}
+corrdat <- cleandat %>% dplyr::select("gender", "agegroup", "education1", "NPS1")
+mm <- model.matrix( ~ ., data = corrdat)
+
+#creating heatmap
+pheatmap::pheatmap(cor(mm[,-1]),display_numbers = TRUE,fontsize = 7,number_color= "black",angle_col = "45",angle_row = "45",labels_col = c("Female","Age:30-39 years","Age:40-49 years","Age:50+","Edu:Some College", "Edu:College graduate or Above","Nocturnal Panic Attacks"),labels_row=c("Female","Age:30-39 years","Age:40-49 years","Age:50+","Edu:Some College", "Edu:College graduate or Above","Nocturnal Panic Attacks"))
+
+```
+
+**Figure 3:** This heatmap was created to check for multicollinearity in the covariates used in the study. The variables age, gender, education and "nocturnal panic attack" used for this study show no multicollinearity at any level. Thus, none are being excluded from the model
+
+## Models:
+Due to the  study variable STBI5 being count data, we ran a Poisson regression model  as our first test of association. However, we noticed that in SITBI5's, variance was larger than mean (mean =4.78, variance=594.3) indicating over dispersion (theta =0.1039). Thus we ran a Negative binomial model to account for this. We also noticed that there was zero inflation in this data (Figure 2 ) and thus also ran zero inflated zero-inflated Poisson, and Zero-inflated Negative Binomials to find the model that best fits our data.Once the models were run, model comparison was carried out to choose the best model for this analysis.
+
+### Poisson model
+```{r}
+fit.pois<- glm(SITBI5 ~ NPS1+ gender+ agegroup+ education1, data = cleandat, family = poisson(link = "log"))
+summary(fit.pois)
+
+# mean vs variance of SITBI5
+summary(newdat_noNA$SITBI5)
+var(newdat_noNA$SITBI5, na.rm = TRUE)
+```
+
+### Negative binomial
+```{r}
+fit.negbin <- MASS::glm.nb(SITBI5 ~ NPS1 + gender+ agegroup+ education1, data = cleandat, control=glm.control(maxit = 100))
+summary(fit.negbin)
+```
+
+### Zero Inflated Poission
+```{r}
+fit.ZIpois <-
+  pscl::zeroinfl(SITBI5 ~ NPS1 + gender+ agegroup+ education1 |1,dist = "poisson",data = cleandat)
+summary(fit.ZIpois)
+```
+
+### Zero-Inflated Negative Binomial
+```{r}
+fit.ZInegbin <-
+  pscl::zeroinfl(SITBI5 ~ NPS1 + gender+ agegroup+ education1 |1,dist = "negbin",data = cleandat)
+summary(fit.ZInegbin)
+```
+
+## Model comparison:
+
+### Logliklihood and AIC comparison
+```{r}
+listofmodels <- list(
+  poisson = fit.pois,
+  negbin = fit.negbin,
+  ZIpois = fit.ZIpois,
+  ZInegbin = fit.ZInegbin)
+#comparing log likelihoods
+lapply(listofmodels, logLik)
+#comparing AICs
+lapply(listofmodels, AIC)
+
+pchisq(0.95,df=1)
+pchisq(0.95,df=2)
+```
+
+**Model comparison:** 
+After comparing the log likelihoods of these models, we found that log likelihood of the Negative Binomial model and the Zero Inflated Negative Binomial model had the smallest values out of the four (-293.35). We also observed that both the models’ log likelihood values were the same. This indicated that one of these two models is the best fit for this data. 
+
+Since the more complex Zero Inflated Negative binomial model uses one more degree of freedom (df=10 vs df=9) without improving the log likelihood, **we chose Negative Binomial as the most appropriate model for this analysis.** This choice was further supported by comparing the AICs of the two models (604 vs 606). We notice that the Negative Binomial model has the smallest AIC of them all indicating that this is the best fit for our analysis.
+
+We carried out dignostic plots as well. However they were not helpful in the comparison. The homoscadsticity plot for Negative Binomial did so more even variance than the rest.
+
+### Diagnostic plots
+```{r, echo=FALSE}
+plotpanel1 <- function(fit, ...) {
+  plot(
+    x = predict(fit),
+    y = residuals(fit, type = "pearson"),
+    xlab = "Predicted Values",
+    ylab = "Pearson Residuals",
+    ...
+  )
+  abline(h = 0, lty = 3)
+  lines(lowess(x = predict(fit), y = resid(fit, type = "pearson")),
+        col = "red")
+}
+plotpanel2 <- function(fit, ...) {
+  resids <- scale(residuals(fit, type = "pearson"))
+  qqnorm(resids, ylab = "Std Pearson resid.", ...)
+  qqline(resids)
+}
+
+par(mfrow = c(2, 4))
+plotpanel1(fit.pois, main = "Residuals vs. Fitted\n Poisson")
+plotpanel2(fit.pois, main = "Normal Q-Q Plot\n Poisson")
+plotpanel1(fit.negbin, main = "Residuals vs. Fitted\n Negative Binomial")
+plotpanel2(fit.negbin, main = "Normal Q-Q Plot\n Negative Binomial")
+plotpanel1(fit.ZIpois, main = "Residuals vs. Fitted\n Zero-inflated Poisson")
+plotpanel2(fit.ZIpois, main = "Normal Q-Q Plot\n Zero-inflated Poisson")
+plotpanel1(fit.ZInegbin, main = "Residuals vs. Fitted\n Zero-inflated Negative Binomial")
+plotpanel2(fit.ZInegbin, main = "Normal Q-Q Plot\n Zero-inflated Negative Binomial")
+```
+
+# **Results:**
+The following Table 2 and 3 shows the exponetiated results from the Negative Binomial model:
+
+**Table 2 & 3: Negative Binomial Regession results**
+```{r, warning = FALSE}
+
+tidy(fit.negbin,exponentiate=TRUE,  conf.int=TRUE)
+
+tbl_regression(fit.negbin, exponentiate = TRUE)
+```
+**the IRR in the above table represents Rate Ratio not incedence rate ratio
+
+# **Conclusions**
+
+**Interpretation of coefficients**
+
+• After adjustment for age, education and gender, those who have Nocturnal Panic Attacks tended to have episodes of suicide ideations at a rate 2.80 (95% CI =1.00, 8.02, p-value = 0.029) times higher than those with no nocturnal panic attacks. The p-value less than 0.05 indicates that these results are statistically significant.
+
+Notably, two other variables show significant p-values less than 0.05.
+
+• Those aged 50+ tended to have episodes of suicide ideations at a rate 0.16 (95% CI =0.03, 1.17, p-value = 0.028) times lower than those aged 19-29 holding all sex, nocturnal panic attacks and education constant. 
+
+• Also females tended to have episodes of suicide ideations at a rate 0.29 (95% CI =0.08, 0.93, p-value = 0.01) times lower than males when holding age,nocturnal panic attacks and education constant .
+
+In conclusion due to statistically significant results, we conclude that nocturnal panic attacks are associated with increased episodes of suicide ideations.
+
+Our results are different from that of Smith paper because they use daytime and night time nocturnal panic attacks to compare episodes of suicide ideations. They also analyze episodes of suicide planning and episodes of attempted suicide but we do not. 
+
+# Discussion of statistical and informatics challenges
+One of the challanges I faced was the non-convergence of the regressions. I tired to troubleshoot by increasing the iterations however I don't believe this worked in case of this analysis. 
+We also a large volume of missing data which would have been best handled with imputations. However, as this was beyond this class's scope, I did not carry it out.
+At the beginning, the selection of model was confusing as two models turned out to have the same logliklihood value. However, I learned that higher degrees of freedom means more complex models, therefore if the more complex model does not add value to the analysis, one should go with the less complex model with lower degree of freedom. Overall, this was a interesting exercise and I would like to carry out more analysis using suicide attempts and planing variables.
+
+References: 
+Nicole S. Smith, Rachel L. Martin, Brian W. Bauer, Shelby L. Bandel, Daniel W. Capron, The association between nocturnal panic attacks and suicidal ideation, plans, and attempts. Psychiatry Research, Volume 291,2020,113280,ISSN 0165-1781, https://doi.org/10.1016/j.psychres.2020.113280 (Links to an external site.) 
